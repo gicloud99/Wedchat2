@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>trochyen2</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
+    #login-section { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; background: #fff; border-radius: 8px; }
+    #login-section h3 { margin-top: 0; color: #333; }
+    #messages { border: 1px solid #ccc; height: 300px; overflow-y: scroll; padding: 10px; background: white; margin-bottom: 10px; }
+    .msg { margin: 5px 0; padding: 5px; border-bottom: 1px dotted #eee; display: flex; justify-content: space-between; align-items: center; }
+    .msg-content { flex-grow: 1; }
+    .me { color: blue; font-weight: bold; }
+    .you { color: green; font-weight: bold; }
+    .delete-btn {
+      background-color: #f44336; /* Red */
+      color: white;
+      padding: 4px 8px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-left: 10px;
+      transition: background-color 0.3s ease;
+    }
+    .delete-btn:hover {
+      background-color: #d32f2f;
+    }
+    input[type="text"], input[type="password"], button { padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
+    button { background-color: #4CAF50; color: white; cursor: pointer; }
+    button:hover { background-color: #45a049; }
+    #login-error { color: red; margin-top: 10px; }
+    #logout-btn {
+        background-color: #f44336; /* Red */
+        margin-left: 10px;
+    }
+    #logout-btn:hover {
+        background-color: #d32f2f;
+    }
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+</head>
+<body>
+
+  <h2>💬 chatwed thứ 2</h2>
+
+  <div id="login-section">
+    <h3>Đăng nhập / Vào chat</h3>
+    <p>Tên người dùng:</p>
+    <input type="text" id="loginUsername" placeholder="Nhập tên của bạn..." />
+    <p>Mật khẩu (tùy chọn, chỉ cho Admin):</p>
+    <input type="password" id="loginPassword" placeholder="Mật khẩu (nếu có)..." />
+    <button onclick="login()">Vào chat</button>
+    <div id="login-error"></div>
+  </div>
+
+  <div id="chat" style="display:none;">
+    <p>Chào mừng: <span id="displayUsername"></span></p>
+    <button id="logout-btn" onclick="logout()">Đăng xuất</button>
+    <div id="messages"></div>
+    <input id="messageInput" placeholder="Nhập tin nhắn..." />
+    <button onclick="sendMessage()">Gửi</button>
+  </div>
+
+  <script>
+    // Cấu hình Firebase (Do Đạt cung cấp - KHÔNG THAY ĐỔI TRỪ KHI BẠN CẬP NHẬT DỰ ÁN)
+    const firebaseConfig = {
+  apiKey: "AIzaSyAVUzjEtWAw5uY_geuXDdgOkdnwfCOQCy8",
+  authDomain: "chatwedcuatoi.firebaseapp.com",
+  databaseURL: "https://chatwedcuatoi-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "chatwedcuatoi",
+  storageBucket: "chatwedcuatoi.firebasestorage.app",
+  messagingSenderId: "438404723863",
+  appId: "1:438404723863:web:3657f3b034e1b0a79265d2",
+  measurementId: "G-M2MEQXY40M"
+};
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // Biến toàn cục để lưu trữ thông tin người dùng hiện tại và trạng thái admin
+    let currentUsername = "";
+    let currentIsAdmin = false;
+
+    // --- Cấu hình Admin ---
+    // QUAN TRỌNG: Đây là cách xác thực admin phía client.
+    // Đối với các ứng dụng thực tế, quyền admin nên được quản lý an toàn hơn
+    // thông qua Firebase Security Rules và/hoặc xác thực phía server.
+    const ADMIN_USERNAME = '<p style="color:green; font-size:20px;">ziolet</p>';
+    const ADMIN_PASSWORD = "Dat854155557@";   
+
+    // --- Chức năng Đăng nhập / Vào chat ---
+    function login() {
+      const enteredUsername = document.getElementById("loginUsername").value.trim();
+      const enteredPassword = document.getElementById("loginPassword").value.trim();
+      const loginErrorDiv = document.getElementById("login-error");
+
+      // Xóa thông báo lỗi cũ
+      loginErrorDiv.textContent = "";
+
+      if (enteredUsername === "") {
+        loginErrorDiv.textContent = "Vui lòng nhập tên người dùng của bạn.";
+        return;
+      }
+
+      // Kiểm tra admin login
+      if (enteredUsername === ADMIN_USERNAME && enteredPassword === ADMIN_PASSWORD) {
+        currentIsAdmin = true;
+        currentUsername = enteredUsername;
+        alert("Đăng nhập thành công với quyền Admin!");
+      } else {
+        // Guest login (hoặc người dùng thường)
+        currentIsAdmin = false;
+        currentUsername = enteredUsername;
+        if (enteredPassword !== "") {
+            alert("Đăng nhập với tên người dùng thường. Mật khẩu không chính xác hoặc không áp dụng.");
+        } else {
+            alert("Chào mừng khách " + currentUsername + "!");
+        }
+      }
+
+      // Cập nhật giao diện sau khi đăng nhập
+      document.getElementById("login-section").style.display = "none";
+      document.getElementById("chat").style.display = "block";
+      document.getElementById("displayUsername").textContent = currentUsername;
+      
+      // Gắn hoặc gắn lại trình lắng nghe tin nhắn
+      attachMessageListeners();
+    }
+
+    // --- Chức năng Đăng xuất ---
+    function logout() {
+        currentUsername = "";
+        currentIsAdmin = false;
+        
+        // Cập nhật giao diện khi đăng xuất
+        document.getElementById("login-section").style.display = "block";
+        document.getElementById("chat").style.display = "none";
+        document.getElementById("displayUsername").textContent = "";
+        
+        // Xóa hết tin nhắn trên UI và ngắt kết nối lắng nghe
+        msgBox.innerHTML = ''; 
+        db.ref("messages").off(); // Ngắt kết nối tất cả các lắng nghe
+        alert("Bạn đã đăng xuất.");
+    }
+
+    // --- Gửi tin nhắn ---
+    function sendMessage() {
+      const msgInput = document.getElementById("messageInput");
+      const text = msgInput.value.trim();
+      if (text !== "") {
+        // Tên người gửi sẽ là username hiện tại
+        db.ref("messages").push({
+          name: currentUsername,
+          message: text,
+          timestamp: Date.now()
+        });
+        msgInput.value = "";
+      }
+    }
+
+    // --- Xóa tin nhắn ---
+    function deleteMessage(messageKey) {
+      if (!currentIsAdmin) { // Kiểm tra biến currentIsAdmin phía client (chỉ để UX)
+        alert("Bạn không có quyền để xóa tin nhắn này.");
+        return;
+      }
+      // Xác nhận từ người dùng
+      if (confirm("Bạn có chắc chắn muốn xóa tin nhắn này không?")) {
+        // Thực hiện xóa trên Firebase Realtime Database
+        db.ref("messages").child(messageKey).remove()
+          .then(() => {
+            console.log("Tin nhắn đã được xóa thành công.");
+            // Giao diện sẽ tự cập nhật nhờ lắng nghe child_removed
+          })
+          .catch(error => {
+            console.error("Lỗi khi xóa tin nhắn:", error);
+            alert("Không thể xóa tin nhắn: " + error.message + "\n(Lưu ý: Quyền xóa thực sự do Firebase Security Rules của bạn quyết định, không phải code này!)");
+          });
+      }
+    }
+
+    // --- Hiển thị tin nhắn và quản lý nút xóa ---
+    const msgBox = document.getElementById("messages");
+
+    // Hàm để gắn/gắn lại các trình lắng nghe Firebase
+    function attachMessageListeners() {
+        // Đầu tiên, ngắt kết nối bất kỳ trình lắng nghe hiện có nào để ngăn chặn trùng lặp
+        db.ref("messages").off(); 
+        msgBox.innerHTML = ''; // Xóa hết tin nhắn cũ trên UI trước khi tải lại
+
+        // Gắn trình lắng nghe child_added
+        db.ref("messages").on("child_added", function (snapshot) {
+            const data = snapshot.val();
+            const messageKey = snapshot.key;
+
+            const div = document.createElement("div");
+            div.classList.add("msg");
+            div.setAttribute('data-key', messageKey);
+
+            // So sánh tên người gửi với tên người dùng hiện tại để tô màu
+            const isMe = (currentUsername && data.name === currentUsername);
+            const who = isMe ? "me" : "you";
+            
+            const messageContent = document.createElement("span");
+            messageContent.classList.add("msg-content");
+            messageContent.innerHTML = `<span class="${who}">${data.name}:</span> ${data.message}`;
+            
+            div.appendChild(messageContent);
+
+            // Thêm nút xóa chỉ nếu người dùng hiện tại là admin
+            if (currentIsAdmin) {
+                const deleteButton = document.createElement("button");
+                deleteButton.classList.add("delete-btn");
+                deleteButton.textContent = "Xóa";
+                deleteButton.onclick = function() {
+                    deleteMessage(messageKey);
+                };
+                div.appendChild(deleteButton);
+            }
+
+            msgBox.appendChild(div);
+            msgBox.scrollTop = msgBox.scrollHeight;
+        });
+
+        // Gắn trình lắng nghe child_removed
+        db.ref("messages").on("child_removed", function (oldSnapshot) {
+            const messageKey = oldSnapshot.key;
+            const elementToRemove = msgBox.querySelector(`.msg[data-key="${messageKey}"]`);
+            if (elementToRemove) {
+                elementToRemove.remove();
+            }
+        });
+    }
+
+    // --- Khởi tạo ban đầu ---
+    // Lắng nghe tin nhắn ngay cả khi chưa đăng nhập để hiển thị lịch sử chat
+    // Tuy nhiên, các nút xóa sẽ không xuất hiện cho đến khi admin đăng nhập.
+    attachMessageListeners(); // Hiển thị tin nhắn ngay khi tải trang.
+  </script>
+
+</body>
+  </html>
+  
